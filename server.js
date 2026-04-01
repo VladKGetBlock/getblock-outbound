@@ -13,10 +13,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── Simple JSON file database (no external DB needed on Railway free tier) ──
-const DB_PATH = path.join(__dirname, 'data', 'companies.json');
-const CONTACTS_PATH = path.join(__dirname, 'data', 'contacts.json');
-const RESPONSES_PATH = path.join(__dirname, 'data', 'responses.json');
+// ── Ensure data directory and files exist on startup ────────
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const DB_PATH = path.join(DATA_DIR, 'companies.json');
+const CONTACTS_PATH = path.join(DATA_DIR, 'contacts.json');
+const RESPONSES_PATH = path.join(DATA_DIR, 'responses.json');
+
+[DB_PATH, CONTACTS_PATH, RESPONSES_PATH].forEach(f => {
+  if (!fs.existsSync(f)) fs.writeFileSync(f, '[]');
+});
 
 function readDB(filePath, fallback = []) {
   try {
