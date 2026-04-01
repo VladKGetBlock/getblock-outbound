@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GetBlock.io — Outbound Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#050810;--surface:#0c1022;--surface2:#131929;--border:#1e2d4a;
+  --accent:#00d4ff;--accent2:#6c63ff;--accent3:#00ff9d;--warn:#ff6b35;
+  --text:#e8edf7;--muted:#5a6a8a;--success:#00c97a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+.orb{position:fixed;border-radius:50%;filter:blur(120px);opacity:0.1;pointer-events:none;z-index:0;}
+.orb-1{width:600px;height:600px;background:#00d4ff;top:-200px;right:-100px;}
+.orb-2{width:500px;height:500px;background:#6c63ff;bottom:-150px;left:-100px;}
+.app{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 24px;}
+
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;padding:28px 0 20px;border-bottom:1px solid var(--border);margin-bottom:32px;}
+.logo{display:flex;align-items:center;gap:12px;}
+.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:14px;color:#fff;}
+.logo-text{font-size:18px;font-weight:800;letter-spacing:-0.5px;}
+.logo-sub{font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;}
+.header-badge{display:flex;align-items:center;gap:8px;background:rgba(0,201,122,0.1);border:1px solid rgba(0,201,122,0.3);border-radius:20px;padding:6px 14px;font-family:'Space Mono',monospace;font-size:11px;color:var(--success);}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:32px;width:fit-content;flex-wrap:wrap;}
+.tab{padding:10px 18px;border-radius:9px;font-family:'Syne',sans-serif;font-weight:600;font-size:13px;cursor:pointer;transition:all .2s;color:var(--muted);background:transparent;border:none;display:flex;align-items:center;gap:7px;}
+.tab.active{background:var(--accent);color:#000;}
+.tab:not(.active):hover{color:var(--text);background:var(--surface2);}
+
+/* PANELS */
+.panel{display:none;}.panel.active{display:block;}
+
+/* SECTION HEADERS */
+.section-title{font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px;}
+.section-sub{color:var(--muted);font-size:14px;margin-bottom:24px;}
+
+/* STATS ROW */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.stat-val{font-size:30px;font-weight:800;letter-spacing:-1px;color:var(--accent);}
+.stat-label{font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:4px;}
+
+/* CARDS */
+.prompt-builder{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px;}
+.builder-title{font-size:15px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px;}
+.builder-title span{width:8px;height:8px;border-radius:50%;background:var(--accent3);display:inline-block;}
+
+/* FORMS */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
+@media(max-width:700px){.form-row{grid-template-columns:1fr;}}
+.form-group{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.form-group label{font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.5px;}
+.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:'Syne',sans-serif;font-size:14px;color:var(--text);outline:none;transition:border-color .2s;}
+.form-group input:focus,.form-group select:focus{border-color:var(--accent);}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s;border:none;}
+.btn-primary{background:var(--accent);color:#000;}.btn-primary:hover{background:#33ddff;transform:translateY(-1px);}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);}.btn-secondary:hover{border-color:var(--accent);color:var(--accent);}
+.btn-success{background:rgba(0,201,122,.15);color:var(--success);border:1px solid rgba(0,201,122,.3);}
+.btn-danger{background:rgba(255,107,53,.1);color:var(--warn);border:1px solid rgba(255,107,53,.25);font-size:12px;padding:6px 12px;}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+
+/* DATABASE TABLE */
+.db-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:24px;}
+.db-table-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+.db-table-title{font-size:15px;font-weight:700;}
+.db-search{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;width:220px;}
+.db-search:focus{border-color:var(--accent);}
+.db-filter{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;}
+.table-wrap{overflow-x:auto;max-height:480px;overflow-y:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{padding:10px 14px;text-align:left;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);white-space:nowrap;}
+tbody td{padding:11px 14px;border-bottom:1px solid rgba(30,45,74,.5);vertical-align:top;}
+tbody tr:hover td{background:var(--surface2);}
+.company-name{font-weight:700;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;}
+.company-site{font-size:11px;color:var(--muted);}
+.tag-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;font-family:'Space Mono',monospace;background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.15);white-space:nowrap;}
+.score-hot{color:var(--success);font-weight:700;}
+.score-warm{color:var(--warn);font-weight:700;}
+.score-cold{color:var(--muted);}
+.status-badge{font-size:10px;padding:3px 9px;border-radius:10px;font-family:'Space Mono',monospace;}
+.status-pending{background:rgba(90,106,138,.15);color:var(--muted);border:1px solid var(--border);}
+.status-sent{background:rgba(108,99,255,.15);color:var(--accent2);border:1px solid rgba(108,99,255,.3);}
+.status-interested{background:rgba(0,201,122,.15);color:var(--success);border:1px solid rgba(0,201,122,.3);}
+.empty-state{padding:60px 20px;text-align:center;color:var(--muted);}
+.empty-state div{font-size:32px;margin-bottom:12px;}
+
+/* UPLOAD ZONE */
+.upload-zone{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:20px;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(0,212,255,.03);}
+.upload-zone input{display:none;}
+.upload-icon{font-size:36px;margin-bottom:12px;}
+.upload-label{font-size:15px;font-weight:700;margin-bottom:6px;}
+.upload-sub{font-size:13px;color:var(--muted);}
+
+/* COPY BTN */
+.copy-btn{background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.2);color:var(--accent);border-radius:6px;padding:5px 11px;font-size:11px;font-family:'Space Mono',monospace;cursor:pointer;transition:all .2s;}
+.copy-btn:hover{background:rgba(0,212,255,.2);}
+.copied{background:rgba(0,201,122,.2)!important;color:var(--success)!important;border-color:rgba(0,201,122,.4)!important;}
+
+/* ALERT */
+.alert{padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;}
+.alert-info{background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.2);color:var(--accent);}
+.alert-success{background:rgba(0,201,122,.07);border:1px solid rgba(0,201,122,.2);color:var(--success);}
+.alert-warn{background:rgba(255,107,53,.07);border:1px solid rgba(255,107,53,.2);color:var(--warn);}
+
+/* NOTIF FEED */
+.notif-item{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;gap:14px;cursor:pointer;transition:background .2s;}
+.notif-item:hover{background:var(--surface2);}
+.notif-item.unread{border-left:3px solid var(--accent3);}
+.notif-avatar{width:36px;height:36px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;}
+
+/* WEBHOOK BOX */
+.webhook-box{background:#030609;border:1px solid var(--accent3);border-radius:10px;padding:14px 16px;font-family:'Space Mono',monospace;font-size:12px;color:var(--accent3);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;word-break:break-all;}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+.divider{border:none;border-top:1px solid var(--border);margin:24px 0;}
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">GB</div>
+      <div>
+        <div class="logo-text">GetBlock.io — Outbound Intelligence</div>
+        <div class="logo-sub">// WEB3 SALES AUTOMATION PLATFORM</div>
+      </div>
+    </div>
+    <div class="header-badge"><div class="pulse"></div><span id="server-status">CONNECTING...</span></div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('database')">🗄️ Database</button>
+    <button class="tab" onclick="switchTab('upload')">⬆️ Import</button>
+    <button class="tab" onclick="switchTab('clay')">🔗 Clay Setup</button>
+    <button class="tab" onclick="switchTab('responses')">🔔 Responses <span id="notif-badge" style="background:var(--accent3);color:#000;border-radius:10px;padding:1px 7px;font-size:10px;display:none;margin-left:2px"></span></button>
+    <button class="tab" onclick="switchTab('deploy')">🚀 Deploy</button>
+  </div>
+
+  <!-- DATABASE PANEL -->
+  <div class="panel active" id="panel-database">
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><div class="stat-val" id="s-companies">—</div><div class="stat-label">COMPANIES</div></div>
+      <div class="stat-card"><div class="stat-val" id="s-contacts">—</div><div class="stat-label">CONTACTS FOUND</div></div>
+      <div class="stat-card"><div class="stat-val" id="s-hot">—</div><div class="stat-label">HOT LEADS</div></div>
+      <div class="stat-card"><div class="stat-val" id="s-responses">—</div><div class="stat-label">REPLIES</div></div>
+      <div class="stat-card"><div class="stat-val" id="s-updated" style="font-size:14px;margin-top:4px">—</div><div class="stat-label">LAST UPDATED</div></div>
+    </div>
+
+    <div class="db-table-wrap">
+      <div class="db-table-header">
+        <div class="db-table-title">📋 Company Database</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input class="db-search" id="db-search" placeholder="Search companies..." oninput="filterTable()">
+          <select class="db-filter" id="db-vertical" onchange="filterTable()">
+            <option value="">All verticals</option>
+          </select>
+          <select class="db-filter" id="db-sort" onchange="loadCompanies()">
+            <option value="newest">Newest first</option>
+            <option value="score">By score</option>
+          </select>
+          <button class="btn btn-secondary" style="font-size:12px;padding:8px 14px" onclick="loadCompanies()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>COMPANY</th>
+              <th>VERTICAL</th>
+              <th>CHAIN</th>
+              <th>SIGNAL</th>
+              <th>CONTACT</th>
+              <th>SCORE</th>
+              <th>STATUS</th>
+              <th>ADDED</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="companies-tbody">
+            <tr><td colspan="9"><div class="empty-state"><div>🛰️</div>Loading companies...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD PANEL -->
+  <div class="panel" id="panel-upload">
+    <div class="section-title">⬆️ Import Companies from Clay</div>
+    <div class="section-sub">Upload your daily Clay CSV export to add new companies to the database. Duplicates are skipped automatically.</div>
+
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('csv-input').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+      <input type="file" id="csv-input" accept=".csv" onchange="handleFile(event)">
+      <div class="upload-icon">📂</div>
+      <div class="upload-label">Drop your Clay CSV here or click to browse</div>
+      <div class="upload-sub">Export from Clay → select all rows → Export as CSV → upload here</div>
+    </div>
+
+    <div id="upload-result" style="display:none"></div>
+
+    <div class="prompt-builder">
+      <div class="builder-title"><span></span> How to export from Clay daily</div>
+      <div style="font-size:13px;color:#aab4cc;line-height:1.8">
+        1. Open your <strong style="color:var(--text)">GetBlock Daily Discovery</strong> workbook in Clay<br>
+        2. Click <strong style="color:var(--text)">Actions → Export → CSV</strong> (top right)<br>
+        3. Download the file<br>
+        4. Drag & drop it here — new companies are added, duplicates skipped<br>
+        5. Takes under 10 seconds total
+      </div>
+    </div>
+
+    <div class="prompt-builder" style="border-color:var(--accent3)">
+      <div class="builder-title"><span style="background:var(--accent3)"></span> Inbound Webhook — Clay pushes directly (no manual export needed)</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Once set up in Clay's HTTP API step, enriched companies are pushed automatically — no CSV needed.</div>
+      <div class="webhook-box">
+        <span id="webhook-url-display">http://localhost:3000/api/webhook/inbound</span>
+        <button class="copy-btn" onclick="copyWebhook()">⧉ Copy</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">After deploying to Railway, replace <code style="color:var(--accent)">localhost:3000</code> with your Railway URL.</div>
+    </div>
+  </div>
+
+  <!-- CLAY SETUP PANEL -->
+  <div class="panel" id="panel-clay">
+    <div class="section-title">🔗 Clay Automation Setup</div>
+    <div class="section-sub">3 prompts to copy into Clay. Run them in order as enrichment columns after your Find Companies source.</div>
+
+    <div class="prompt-builder" style="border-color:var(--accent)">
+      <div class="builder-title"><span></span> PROMPT 1 — Claygent enrichment: research each company
+        <button class="copy-btn" id="cp1" onclick="copyBlock('p1','cp1')" style="float:right">⧉ Copy</button>
+      </div>
+      <div id="p1" style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:#aad4ff;white-space:pre-wrap">Research the company {{Company Name}} at {{Website}}.
+
+Find out:
+1) What blockchain(s) they primarily build on
+2) What RPC or node provider they currently use — check their GitHub README, docs site, or job postings for mentions of Alchemy, Infura, QuickNode, Ankr, or self-hosted nodes
+3) Their most recent notable event: funding round, mainnet launch, new product, or hiring spike
+4) Why a blockchain RPC provider like GetBlock.io would be relevant to them
+
+Return only this JSON:
+{
+  "primary_chain": "",
+  "current_rpc_provider": "",
+  "recent_signal": "",
+  "why_getblock_fits": "",
+  "lead_score": 0
+}
+
+For lead_score (0-20): add 5 if self-hosting nodes, add 4 if using a competitor RPC, add 3 if recent funding, add 3 if recent launch, add 3 if hiring infra engineers, add 2 if builds on Ethereum/Solana/BSC.
+
+Only run if: Company Name is not empty.</div>
+    </div>
+
+    <div class="prompt-builder" style="border-color:var(--accent2)">
+      <div class="builder-title"><span style="background:var(--accent2)"></span> PROMPT 2 — Claygent enrichment: find decision maker
+        <button class="copy-btn" id="cp2" onclick="copyBlock('p2','cp2')" style="float:right">⧉ Copy</button>
+      </div>
+      <div id="p2" style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:#c4b5ff;white-space:pre-wrap">Find the best person to contact at {{Company Name}} ({{Website}}) about blockchain infrastructure.
+
+Target role: CTO, Co-founder, Head of Engineering, Head of Infrastructure, or VP Engineering.
+Do NOT return marketing, sales, or HR people.
+
+Return only this JSON:
+{
+  "first_name": "",
+  "last_name": "",
+  "role": "",
+  "linkedin_url": "",
+  "twitter_handle": "",
+  "email_guess": ""
+}
+
+For email_guess: infer from pattern firstname@domain.com based on what you find about this company's email format.
+
+Only run if: Company Name is not empty.</div>
+    </div>
+
+    <div class="prompt-builder" style="border-color:var(--accent3)">
+      <div class="builder-title"><span style="background:var(--accent3)"></span> PROMPT 3 — Claygent enrichment: write personalized message
+        <button class="copy-btn" id="cp3" onclick="copyBlock('p3','cp3')" style="float:right">⧉ Copy</button>
+      </div>
+      <div id="p3" style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:#9dffd8;white-space:pre-wrap">Write a LinkedIn DM from Vlad K at GetBlock.io to {{first_name}}, who is {{role}} at {{Company Name}}.
+
+GetBlock.io facts:
+- RPC node infrastructure for 100+ blockchains
+- Sub-10ms latency, #1 globally for BSC and Solana (CompareNodes)
+- 99.99% SLA dedicated nodes (NY, Frankfurt, Singapore)
+- Powers Blockaid, major DeFi protocols, trading bots
+- Free trial endpoint available, no commitment
+
+Their context:
+- Chain: {{primary_chain}}
+- Recent news: {{recent_signal}}
+- Why relevant: {{why_getblock_fits}}
+
+Rules:
+- Under 100 words
+- Open with a specific reference to {{recent_signal}} — never generic
+- One concrete value prop for their use case
+- End with: free trial endpoint offer OR quick chat ask
+- Never use: "synergies", "leverage", "excited to connect", "hope this finds you well"
+- Sign off: Vlad, GetBlock.io
+
+Return only the message text, nothing else.
+Only run if: first_name is not empty.</div>
+    </div>
+
+    <div class="prompt-builder">
+      <div class="builder-title"><span></span> HTTP API step — pushes enriched data to this app
+        <button class="copy-btn" id="cp4" onclick="copyBlock('p4','cp4')" style="float:right">⧉ Copy JSON</button>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">In Clay: + Add column → HTTP API → Method: POST → URL: your Railway app URL + <code style="color:var(--accent)">/api/webhook/inbound</code></div>
+      <div id="p4" style="font-family:'Space Mono',monospace;font-size:11px;line-height:1.8;color:#aad4ff;white-space:pre-wrap">{
+  "company": "{{Company Name}}",
+  "website": "{{Website}}",
+  "vertical": "{{Industry}}",
+  "chain": "{{primary_chain}}",
+  "signal": "{{recent_signal}}",
+  "why_getblock_fits": "{{why_getblock_fits}}",
+  "name": "{{first_name}} {{last_name}}",
+  "role": "{{role}}",
+  "email": "{{email_guess}}",
+  "linkedin": "{{linkedin_url}}",
+  "twitter": "{{twitter_handle}}",
+  "score": "{{lead_score}}",
+  "message": "{{personalized_message}}"
+}</div>
+    </div>
+  </div>
+
+  <!-- RESPONSES PANEL -->
+  <div class="panel" id="panel-responses">
+    <div class="section-title">🔔 Reply Feed</div>
+    <div class="section-sub">Responses from outreach campaigns pushed here automatically via webhook.</div>
+
+    <div class="prompt-builder" style="border-color:var(--accent3);margin-bottom:20px">
+      <div class="builder-title"><span style="background:var(--accent3)"></span> Reply Webhook URL — paste into Instantly / your email tool
+        <button class="copy-btn" id="cp-reply" onclick="copyReplyWebhook()">⧉ Copy</button>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--accent3)" id="reply-webhook-display">http://localhost:3000/api/webhook/reply</div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700">Inbound Replies</div>
+        <button class="btn btn-secondary" style="font-size:12px;padding:7px 14px" onclick="loadResponses()">↻ Refresh</button>
+      </div>
+      <div id="responses-list"><div class="empty-state"><div>📭</div>No replies yet. When prospects respond, they appear here automatically.</div></div>
+    </div>
+  </div>
+
+  <!-- DEPLOY PANEL -->
+  <div class="panel" id="panel-deploy">
+    <div class="section-title">🚀 Deploy to Railway via GitHub</div>
+    <div class="section-sub">Push this app to GitHub and deploy on Railway in under 5 minutes. Your data persists, your webhooks become live URLs.</div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-val" style="font-size:20px">1️⃣</div><div class="stat-label">GITHUB PUSH</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:20px">2️⃣</div><div class="stat-label">CONNECT RAILWAY</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:20px">3️⃣</div><div class="stat-label">AUTO DEPLOY</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:20px">✅</div><div class="stat-label">LIVE URL</div></div>
+    </div>
+
+    <div class="prompt-builder" style="border-color:var(--accent)">
+      <div class="builder-title"><span></span> Step 1 — Push to GitHub</div>
+      <div style="font-size:13px;color:#aab4cc;line-height:2;font-family:'Space Mono',monospace">
+        <span style="color:var(--muted)"># In your terminal, inside the project folder:</span><br>
+        <span style="color:var(--accent3)">git init</span><br>
+        <span style="color:var(--accent3)">git add .</span><br>
+        <span style="color:var(--accent3)">git commit -m "GetBlock Outbound Intelligence v1"</span><br>
+        <span style="color:var(--accent3)">git remote add origin https://github.com/YOUR_USERNAME/getblock-outbound.git</span><br>
+        <span style="color:var(--accent3)">git push -u origin main</span>
+      </div>
+    </div>
+
+    <div class="prompt-builder" style="border-color:var(--accent2)">
+      <div class="builder-title"><span style="background:var(--accent2)"></span> Step 2 — Deploy on Railway</div>
+      <div style="font-size:13px;color:#aab4cc;line-height:1.9">
+        1. Go to <strong style="color:var(--accent)">railway.app</strong> → New Project<br>
+        2. Click <strong style="color:var(--text)">"Deploy from GitHub repo"</strong><br>
+        3. Select your <strong style="color:var(--text)">getblock-outbound</strong> repo<br>
+        4. Railway auto-detects Node.js — no config needed<br>
+        5. Click <strong style="color:var(--text)">Deploy</strong> — takes ~90 seconds<br>
+        6. Go to <strong style="color:var(--text)">Settings → Domains → Generate Domain</strong><br>
+        7. You get a URL like <span style="color:var(--accent3)">getblock-outbound.up.railway.app</span>
+      </div>
+    </div>
+
+    <div class="prompt-builder" style="border-color:var(--accent3)">
+      <div class="builder-title"><span style="background:var(--accent3)"></span> Step 3 — Update your webhook URLs</div>
+      <div style="font-size:13px;color:#aab4cc;line-height:1.9">
+        After Railway gives you a live URL, update these two places:<br><br>
+        <strong style="color:var(--text)">In Clay HTTP API step:</strong><br>
+        <span style="color:var(--accent3);font-family:'Space Mono',monospace">https://YOUR-APP.up.railway.app/api/webhook/inbound</span><br><br>
+        <strong style="color:var(--text)">In Instantly / your email tool reply webhook:</strong><br>
+        <span style="color:var(--accent3);font-family:'Space Mono',monospace">https://YOUR-APP.up.railway.app/api/webhook/reply</span><br><br>
+        That's it — Clay pushes leads in, Instantly pushes replies in, everything lands in this app automatically.
+      </div>
+    </div>
+
+    <div class="alert alert-info">
+      ℹ️ <strong>Railway free tier</strong> gives you $5/month credit — enough for this app running 24/7. No credit card needed to start. For the database to persist across deploys, add a <strong>Railway Volume</strong> (Storage tab) mounted at <code>/app/data</code>.
+    </div>
+
+    <div class="prompt-builder">
+      <div class="builder-title"><span></span> Your live URL (update after deploying)</div>
+      <div class="form-group" style="margin:0">
+        <input type="text" id="railway-url" placeholder="https://your-app.up.railway.app" oninput="updateWebhookUrls()">
+      </div>
+    </div>
+  </div>
+
+</div><!-- end .app -->
+
+<script>
+const BASE = window.location.origin;
+let allCompanies = [];
+
+// ── API helpers ────────────────────────────────────────────
+async function api(path, opts = {}) {
+  try {
+    const r = await fetch(BASE + path, opts);
+    return await r.json();
+  } catch { return null; }
+}
+
+// ── Tab switching ──────────────────────────────────────────
+function switchTab(name) {
+  const names = ['database','upload','clay','responses','deploy'];
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i] === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'database') loadCompanies();
+  if (name === 'responses') loadResponses();
+}
+
+// ── Load stats ─────────────────────────────────────────────
+async function loadStats() {
+  const data = await api('/api/stats');
+  if (!data) { document.getElementById('server-status').textContent = 'OFFLINE'; return; }
+  document.getElementById('server-status').textContent = 'LIVE';
+  document.getElementById('s-companies').textContent = data.total_companies;
+  document.getElementById('s-contacts').textContent = data.total_contacts;
+  document.getElementById('s-hot').textContent = data.hot_leads;
+  document.getElementById('s-responses').textContent = data.total_responses;
+  document.getElementById('s-updated').textContent = data.last_updated
+    ? new Date(data.last_updated).toLocaleDateString() : '—';
+
+  // populate vertical filter
+  const sel = document.getElementById('db-vertical');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All verticals</option>';
+  if (data.by_vertical) {
+    Object.entries(data.by_vertical).forEach(([v, n]) => {
+      sel.innerHTML += `<option value="${v}" ${v===current?'selected':''}>${v} (${n})</option>`;
+    });
+  }
+}
+
+// ── Load companies ─────────────────────────────────────────
+async function loadCompanies() {
+  const sort = document.getElementById('db-sort')?.value || 'newest';
+  const data = await api(`/api/companies?sort=${sort}`);
+  if (!data) return;
+  allCompanies = data.companies || [];
+  renderTable(allCompanies);
+  loadStats();
+}
+
+function filterTable() {
+  const search = document.getElementById('db-search').value.toLowerCase();
+  const vertical = document.getElementById('db-vertical').value;
+  let filtered = allCompanies;
+  if (search) filtered = filtered.filter(c =>
+    c.company_name?.toLowerCase().includes(search) ||
+    c.website?.toLowerCase().includes(search) ||
+    c.vertical?.toLowerCase().includes(search)
+  );
+  if (vertical) filtered = filtered.filter(c => c.vertical === vertical);
+  renderTable(filtered);
+}
+
+function renderTable(companies) {
+  const tbody = document.getElementById('companies-tbody');
+  if (!companies.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div>🗄️</div>No companies yet. Import a CSV from Clay to get started.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = companies.map(c => {
+    const score = parseInt(c.lead_score) || 0;
+    const scoreClass = score >= 15 ? 'score-hot' : score >= 10 ? 'score-warm' : 'score-cold';
+    const scoreLabel = score >= 15 ? `🔥 ${score}` : score >= 10 ? `🟡 ${score}` : `❄️ ${score}`;
+    const statusMap = {
+      'Pending': 'status-pending', 'Sent': 'status-sent',
+      'Interested': 'status-interested', 'Not Now': 'status-pending'
+    };
+    const statusClass = statusMap[c.outreach_status] || 'status-pending';
+    const added = c.added_at ? new Date(c.added_at).toLocaleDateString() : '—';
+    const contact = c.contact_name
+      ? `<div style="font-size:12px;font-weight:600">${c.contact_name}</div><div style="font-size:10px;color:var(--muted)">${c.contact_role||''}</div>`
+      : `<span style="color:var(--muted);font-size:11px">Not found</span>`;
+
+    return `<tr>
+      <td>
+        <div class="company-name">${c.company_name}</div>
+        <div class="company-site">${c.website || ''}</div>
+      </td>
+      <td>${c.vertical ? `<span class="tag-badge">${c.vertical}</span>` : '—'}</td>
+      <td style="font-size:12px;color:var(--accent)">${c.primary_chain || '—'}</td>
+      <td style="font-size:11px;color:var(--muted);max-width:160px">${c.recent_signal || '—'}</td>
+      <td>${contact}</td>
+      <td><span class="${scoreClass}">${scoreLabel}</span></td>
+      <td>
+        <select class="db-filter" style="font-size:11px;padding:4px 8px" onchange="updateStatus('${c.id}', this.value)">
+          ${['Pending','Sent','Interested','Not Now'].map(s =>
+            `<option ${c.outreach_status===s?'selected':''}>${s}</option>`
+          ).join('')}
+        </select>
+      </td>
+      <td style="font-size:11px;color:var(--muted)">${added}</td>
+      <td><button class="btn-danger" onclick="deleteCompany('${c.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function updateStatus(id, status) {
+  await api(`/api/companies/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ outreach_status: status })
+  });
+}
+
+async function deleteCompany(id) {
+  if (!confirm('Remove this company from the database?')) return;
+  await api(`/api/companies/${id}`, { method: 'DELETE' });
+  loadCompanies();
+}
+
+// ── CSV Upload ─────────────────────────────────────────────
+function dragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag'); }
+function dragLeave() { document.getElementById('upload-zone').classList.remove('drag'); }
+function dropFile(e) { e.preventDefault(); dragLeave(); const f = e.dataTransfer.files[0]; if (f) uploadCSV(f); }
+function handleFile(e) { const f = e.target.files[0]; if (f) uploadCSV(f); }
+
+async function uploadCSV(file) {
+  const res = document.getElementById('upload-result');
+  res.style.display = 'block';
+  res.innerHTML = `<div class="alert alert-info">⟳ Importing ${file.name}...</div>`;
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const r = await fetch(BASE + '/api/companies/upload', { method: 'POST', body: form });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    res.innerHTML = `<div class="alert alert-success">✓ Import complete — <strong>${data.added} new companies added</strong>, ${data.skipped} duplicates skipped. Total in database: ${data.total}.</div>`;
+    loadStats();
+  } catch (err) {
+    res.innerHTML = `<div class="alert alert-warn">✗ Import failed: ${err.message}</div>`;
+  }
+}
+
+// ── Responses ──────────────────────────────────────────────
+async function loadResponses() {
+  const data = await api('/api/responses');
+  if (!data) return;
+  const list = document.getElementById('responses-list');
+  const unread = data.filter(r => !r.read).length;
+  const badge = document.getElementById('notif-badge');
+  if (unread > 0) { badge.textContent = unread; badge.style.display = 'inline'; }
+  else badge.style.display = 'none';
+
+  if (!data.length) {
+    list.innerHTML = `<div class="empty-state"><div>📭</div>No replies yet.</div>`;
+    return;
+  }
+  list.innerHTML = data.map(r => `
+    <div class="notif-item ${!r.read ? 'unread' : ''}" onclick="markRead('${r.id}', this)">
+      <div class="notif-avatar" style="background:rgba(0,212,255,.15);color:var(--accent)">${(r.name||'?').substring(0,2).toUpperCase()}</div>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:14px;font-weight:700">${r.name || 'Unknown'} <span style="font-size:11px;color:var(--muted)">· ${r.company||''}</span></div>
+          <div style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace">${r.received_at ? new Date(r.received_at).toLocaleDateString() : ''}</div>
+        </div>
+        <div style="font-size:13px;color:#aab4cc">${r.message || r.body || 'Reply received'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function markRead(id, el) {
+  await api(`/api/responses/${id}/read`, { method: 'PATCH' });
+  el.classList.remove('unread');
+}
+
+// ── Copy helpers ───────────────────────────────────────────
+function copyBlock(elId, btnId) {
+  const el = document.getElementById(elId);
+  const btn = document.getElementById(btnId);
+  navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function copyWebhook() {
+  const url = document.getElementById('webhook-url-display').textContent;
+  navigator.clipboard.writeText(url).then(() => alert('Webhook URL copied!'));
+}
+
+function copyReplyWebhook() {
+  const url = document.getElementById('reply-webhook-display').textContent;
+  navigator.clipboard.writeText(url);
+  const btn = document.getElementById('cp-reply');
+  btn.textContent = '✓ Copied!'; btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = '⧉ Copy'; btn.classList.remove('copied'); }, 2000);
+}
+
+function updateWebhookUrls() {
+  const url = document.getElementById('railway-url').value.replace(/\/$/, '');
+  if (!url) return;
+  document.getElementById('webhook-url-display').textContent = url + '/api/webhook/inbound';
+  document.getElementById('reply-webhook-display').textContent = url + '/api/webhook/reply';
+}
+
+// ── Init ───────────────────────────────────────────────────
+loadStats();
+loadCompanies();
+setInterval(loadStats, 30000);
+</script>
+</body>
+</html>
