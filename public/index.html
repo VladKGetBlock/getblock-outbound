@@ -231,7 +231,7 @@ tbody tr:hover td{background:var(--surface2);}
       <div class="builder-title"><span style="background:var(--accent3)"></span> Inbound Webhook — Clay pushes directly (no manual export needed)</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Once set up in Clay's HTTP API step, enriched companies are pushed automatically — no CSV needed.</div>
       <div class="webhook-box">
-        <span id="webhook-url-display">http://localhost:3000/api/webhook/inbound</span>
+        <span id="webhook-url-display">https://getblock-outbound-production.up.railway.app/api/webhook/inbound</span>
         <button class="copy-btn" onclick="copyWebhook()">⧉ Copy</button>
       </div>
       <div style="font-size:12px;color:var(--muted)">After deploying to Railway, replace <code style="color:var(--accent)">localhost:3000</code> with your Railway URL.</div>
@@ -355,7 +355,7 @@ Only run if: first_name is not empty.</div>
       <div class="builder-title"><span style="background:var(--accent3)"></span> Reply Webhook URL — paste into Instantly / your email tool
         <button class="copy-btn" id="cp-reply" onclick="copyReplyWebhook()">⧉ Copy</button>
       </div>
-      <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--accent3)" id="reply-webhook-display">http://localhost:3000/api/webhook/reply</div>
+      <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--accent3)" id="reply-webhook-display">https://getblock-outbound-production.up.railway.app/api/webhook/reply</div>
     </div>
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;">
@@ -423,7 +423,7 @@ Only run if: first_name is not empty.</div>
     <div class="prompt-builder">
       <div class="builder-title"><span></span> Your live URL (update after deploying)</div>
       <div class="form-group" style="margin:0">
-        <input type="text" id="railway-url" placeholder="https://your-app.up.railway.app" oninput="updateWebhookUrls()">
+        <input type="text" id="railway-url" placeholder="https://your-app.up.railway.app" value="https://getblock-outbound-production.up.railway.app" oninput="updateWebhookUrls()">
       </div>
     </div>
   </div>
