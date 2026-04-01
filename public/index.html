@@ -184,9 +184,10 @@ tbody tr:hover td{background:var(--surface2);}
           <thead>
             <tr>
               <th>COMPANY</th>
+              <th>DOMAIN</th>
               <th>VERTICAL</th>
-              <th>CHAIN</th>
-              <th>SIGNAL</th>
+              <th>DESCRIPTION</th>
+              <th>LINKEDIN</th>
               <th>CONTACT</th>
               <th>SCORE</th>
               <th>STATUS</th>
@@ -501,31 +502,30 @@ function filterTable() {
 function renderTable(companies) {
   const tbody = document.getElementById('companies-tbody');
   if (!companies.length) {
-    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div>🗄️</div>No companies yet. Import a CSV from Clay to get started.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div>🗄️</div>No companies yet. Import a CSV from Clay to get started.</div></td></tr>`;
     return;
   }
   tbody.innerHTML = companies.map(c => {
     const score = parseInt(c.lead_score) || 0;
     const scoreClass = score >= 15 ? 'score-hot' : score >= 10 ? 'score-warm' : 'score-cold';
     const scoreLabel = score >= 15 ? `🔥 ${score}` : score >= 10 ? `🟡 ${score}` : `❄️ ${score}`;
-    const statusMap = {
-      'Pending': 'status-pending', 'Sent': 'status-sent',
-      'Interested': 'status-interested', 'Not Now': 'status-pending'
-    };
-    const statusClass = statusMap[c.outreach_status] || 'status-pending';
     const added = c.added_at ? new Date(c.added_at).toLocaleDateString() : '—';
     const contact = c.contact_name
-      ? `<div style="font-size:12px;font-weight:600">${c.contact_name}</div><div style="font-size:10px;color:var(--muted)">${c.contact_role||''}</div>`
-      : `<span style="color:var(--muted);font-size:11px">Not found</span>`;
+      ? `<div style="font-size:12px;font-weight:600">${c.contact_name}</div><div style="font-size:10px;color:var(--muted)">${c.contact_role||''}</div>${c.contact_email ? `<div style="font-size:10px;color:var(--accent)">${c.contact_email}</div>` : ''}`
+      : `<span style="color:var(--muted);font-size:11px">—</span>`;
+    const linkedinLink = c.linkedin
+      ? `<a href="${c.linkedin.startsWith('http') ? c.linkedin : 'https://'+c.linkedin}" target="_blank" style="color:var(--accent2);font-size:11px;text-decoration:none">↗ LinkedIn</a>`
+      : '—';
+    const desc = c.description
+      ? `<span style="font-size:11px;color:var(--muted)">${c.description.substring(0,80)}${c.description.length>80?'...':''}</span>`
+      : '—';
 
     return `<tr>
-      <td>
-        <div class="company-name">${c.company_name}</div>
-        <div class="company-site">${c.website || ''}</div>
-      </td>
+      <td><div class="company-name">${c.company || '—'}</div></td>
+      <td><div class="company-site">${c.domain || '—'}</div></td>
       <td>${c.vertical ? `<span class="tag-badge">${c.vertical}</span>` : '—'}</td>
-      <td style="font-size:12px;color:var(--accent)">${c.primary_chain || '—'}</td>
-      <td style="font-size:11px;color:var(--muted);max-width:160px">${c.recent_signal || '—'}</td>
+      <td style="max-width:180px">${desc}</td>
+      <td>${linkedinLink}</td>
       <td>${contact}</td>
       <td><span class="${scoreClass}">${scoreLabel}</span></td>
       <td>

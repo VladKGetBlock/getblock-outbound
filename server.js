@@ -91,29 +91,31 @@ app.post('/api/companies/upload', upload.single('file'), (req, res) => {
     });
 
     const existing = readDB(DB_PATH);
-    const existingNames = new Set(existing.map(c => c.company_name?.toLowerCase()));
+    const existingNames = new Set(existing.map(c => c.company?.toLowerCase()));
 
     let added = 0;
     let skipped = 0;
 
     const normalized = records.map(r => ({
-      id: `co_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      company_name: r['Company Name'] || r['company_name'] || r['Name'] || '',
-      website: r['Company Website'] || r['website'] || r['Website'] || '',
-      vertical: r['Vertical'] || r['vertical'] || r['Industry'] || '',
-      primary_chain: r['Primary Chain'] || r['primary_chain'] || r['Chain'] || '',
-      funding_stage: r['Funding Stage'] || r['funding_stage'] || '',
-      team_size: r['Team Size'] || r['team_size'] || r['Company Size'] || '',
-      recent_signal: r['Recent Signal'] || r['recent_signal'] || r['Signal'] || '',
-      why_getblock_fits: r['Outreach Angle for GetBlock'] || r['why_getblock_fits'] || '',
+      id:          `co_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      company:     r['Name'] || r['Company Name'] || r['company'] || '',
+      domain:      r['Domain'] || r['Website'] || r['Company Website'] || r['domain'] || '',
+      vertical:    r['Primary Industry'] || r['Vertical'] || r['vertical'] || r['Industry'] || '',
+      description: r['Description'] || r['description'] || r['Recent Signal'] || '',
+      linkedin:    r['LinkedIn URL'] || r['linkedin'] || r['LinkedIn'] || '',
+      contact_name:     '',
+      contact_role:     '',
+      contact_email:    '',
+      contact_linkedin: '',
+      message:          '',
+      lead_score:  0,
       outreach_status: 'Pending',
-      lead_score: parseInt(r['Lead Score'] || r['lead_score'] || 0) || 0,
-      added_at: new Date().toISOString(),
-      source: 'Clay CSV'
+      added_at:    new Date().toISOString(),
+      source:      'Clay CSV'
     })).filter(c => {
-      if (!c.company_name) return false;
-      if (existingNames.has(c.company_name.toLowerCase())) { skipped++; return false; }
-      existingNames.add(c.company_name.toLowerCase());
+      if (!c.company) return false;
+      if (existingNames.has(c.company.toLowerCase())) { skipped++; return false; }
+      existingNames.add(c.company.toLowerCase());
       added++;
       return true;
     });
@@ -137,54 +139,50 @@ app.post('/api/webhook/inbound', (req, res) => {
     const data = req.body;
     const companies = readDB(DB_PATH);
 
-    // Try to match existing company and enrich it
+    // Try to match existing company by name or domain
     const idx = companies.findIndex(c =>
-      c.company_name?.toLowerCase() === data.company?.toLowerCase()
+      (c.company && data.company && c.company.toLowerCase() === data.company.toLowerCase()) ||
+      (c.domain && data.domain && c.domain.toLowerCase() === data.domain.toLowerCase())
     );
 
     if (idx >= 0) {
+      // Enrich existing record
       companies[idx] = {
         ...companies[idx],
-        contact_name: data.name,
-        contact_role: data.role,
-        contact_email: data.email,
-        contact_linkedin: data.linkedin,
-        personalized_message: data.message,
-        lead_score: parseInt(data.score) || companies[idx].lead_score,
-        enriched_at: new Date().toISOString()
+        domain:       data.domain      || companies[idx].domain,
+        vertical:     data.vertical    || companies[idx].vertical,
+        description:  data.description || companies[idx].description,
+        linkedin:     data.linkedin    || companies[idx].linkedin,
+        contact_name:    data.contact_name    || companies[idx].contact_name,
+        contact_role:    data.contact_role    || companies[idx].contact_role,
+        contact_email:   data.contact_email   || companies[idx].contact_email,
+        contact_linkedin:data.contact_linkedin|| companies[idx].contact_linkedin,
+        message:      data.message     || companies[idx].message,
+        lead_score:   parseInt(data.score) || companies[idx].lead_score || 0,
+        enriched_at:  new Date().toISOString()
       };
       writeDB(DB_PATH, companies);
     } else {
-      // New company coming from Clay enrichment
+      // New company
       const newEntry = {
-        id: `co_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        company_name: data.company || '',
-        website: '',
-        vertical: data.vertical || '',
-        primary_chain: data.chain || '',
-        contact_name: data.name,
-        contact_role: data.role,
-        contact_email: data.email,
-        contact_linkedin: data.linkedin,
-        personalized_message: data.message,
-        lead_score: parseInt(data.score) || 0,
+        id:          `co_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        company:     data.company     || '',
+        domain:      data.domain      || '',
+        vertical:    data.vertical    || '',
+        description: data.description || '',
+        linkedin:    data.linkedin     || '',
+        contact_name:    data.contact_name    || '',
+        contact_role:    data.contact_role    || '',
+        contact_email:   data.contact_email   || '',
+        contact_linkedin:data.contact_linkedin|| '',
+        message:     data.message     || '',
+        lead_score:  parseInt(data.score) || 0,
         outreach_status: 'Pending',
-        added_at: new Date().toISOString(),
-        source: 'Clay Webhook'
+        added_at:    new Date().toISOString(),
+        source:      'Clay Webhook'
       };
       companies.push(newEntry);
       writeDB(DB_PATH, companies);
-    }
-
-    // Also save to contacts
-    if (data.email || data.linkedin) {
-      const contacts = readDB(CONTACTS_PATH);
-      contacts.push({
-        id: `ct_${Date.now()}`,
-        ...data,
-        received_at: new Date().toISOString()
-      });
-      writeDB(CONTACTS_PATH, contacts);
     }
 
     res.json({ ok: true });
