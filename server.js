@@ -318,7 +318,7 @@ async function pushToKommo(company) {
 
   // Fetch company custom fields to find text fields only (skip dropdowns/selects)
   const fields = await getKommoCompanyFields(subdomain, token);
-  const textFields = fields.filter(f => f.type === 'text' || f.type === 'textarea' || f.type === 'url');
+  const textFields = fields.filter(f => ['text', 'textarea', 'url', 'multitext'].includes(f.type));
   const fieldMap = {};
   textFields.forEach(f => { fieldMap[f.name.toLowerCase()] = f.id; });
   console.log('[Kommo] Available text fields:', Object.keys(fieldMap).join(', '));
@@ -346,8 +346,21 @@ async function pushToKommo(company) {
 
   // Web field (url type) for domain
   tryFill(['web', 'website', 'сайт', 'url'], company.domain);
-  // Use case for full summary
-  tryFill(['use case', 'usecase', 'use_case', 'юз кейс'], summary);
+
+  // Build description in exact order: Domain, Employees, LinkedIn, Description
+  // Keep under 256 chars for Kommo field limit
+  const descParts = [
+    company.domain      ? `Web: ${company.domain}`      : null,
+    company.employees   ? `Size: ${company.employees}`  : null,
+    company.linkedin    ? `LinkedIn: ${company.linkedin}` : null,
+    company.description ? `About: ${company.description}` : null,
+  ].filter(Boolean);
+
+  let descValue = descParts.join(' | ');
+  if (descValue.length > 255) descValue = descValue.substring(0, 252) + '...';
+
+  // Try Description field, then Use case as fallback
+  tryFill(['description', 'описание', 'use case', 'usecase', 'use_case'], descValue);
 
   const url = `https://${subdomain}.kommo.com/api/v4/leads/complex`;
   const body = [{
