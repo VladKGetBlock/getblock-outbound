@@ -186,6 +186,22 @@ app.post('/api/webhook/inbound', (req, res) => {
       };
       companies.push(newEntry);
       writeDB(DB_PATH, companies);
+
+      // Auto-push to Kommo if enabled
+      const settings = getSettings();
+      if (settings.kommo_auto_push) {
+        pushToKommo(newEntry).then(result => {
+          if (result.ok) {
+            const all = readDB(DB_PATH);
+            const i = all.findIndex(x => x.id === newEntry.id);
+            if (i >= 0) {
+              all[i].kommo_lead_id = result.lead_id;
+              all[i].kommo_pushed_at = new Date().toISOString();
+              writeDB(DB_PATH, all);
+            }
+          }
+        });
+      }
     }
 
     res.json({ ok: true });
@@ -243,6 +259,137 @@ app.delete('/api/companies/:id', (req, res) => {
   const companies = readDB(DB_PATH);
   writeDB(DB_PATH, companies.filter(c => c.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════
+// KOMMO CRM INTEGRATION
+// ══════════════════════════════════════════════════════════════
+
+const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
+if (!fs.existsSync(SETTINGS_PATH)) fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ kommo_auto_push: true }));
+
+function getSettings() {
+  try { return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); }
+  catch { return {}; }
+}
+function saveSettings(data) {
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2));
+}
+
+// Push a single company to Kommo as a lead + company card
+async function pushToKommo(company) {
+  const settings = getSettings();
+  if (!settings.kommo_subdomain || !settings.kommo_token) return { ok: false, error: 'Kommo not configured' };
+
+  const url = `https://${settings.kommo_subdomain}.kommo.com/api/v4/leads/complex`;
+  const body = [{
+    name: `${company.company} — GetBlock Outreach`,
+    _embedded: {
+      companies: [{
+        name: company.company,
+        custom_fields_values: [
+          company.domain    ? { field_code: 'WEB',  values: [{ value: company.domain }] }    : null,
+          company.employees ? { field_code: 'EMPLOYEES', values: [{ value: company.employees }] } : null,
+        ].filter(Boolean)
+      }],
+      tags: [{ name: company.vertical || 'Web3' }, { name: 'GetBlock Outbound' }]
+    },
+    custom_fields_values: [
+      company.description ? { field_code: 'DESCRIPTION', values: [{ value: company.description }] } : null,
+    ].filter(Boolean)
+  }];
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${settings.kommo_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: JSON.stringify(data) };
+    const leadId = data?._embedded?.leads?.[0]?.id;
+    return { ok: true, lead_id: leadId };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// GET Kommo settings
+app.get('/api/kommo/settings', (req, res) => {
+  const s = getSettings();
+  res.json({
+    subdomain: s.kommo_subdomain || '',
+    configured: !!(s.kommo_subdomain && s.kommo_token),
+    auto_push: s.kommo_auto_push || false
+  });
+});
+
+// POST save Kommo settings
+app.post('/api/kommo/settings', (req, res) => {
+  const { subdomain, token, auto_push } = req.body;
+  if (!subdomain || !token) return res.status(400).json({ error: 'subdomain and token required' });
+  const settings = getSettings();
+  settings.kommo_subdomain = subdomain.replace('.kommo.com', '').trim();
+  settings.kommo_token = token.trim();
+  settings.kommo_auto_push = !!auto_push;
+  saveSettings(settings);
+  res.json({ ok: true });
+});
+
+// POST test Kommo connection
+app.post('/api/kommo/test', async (req, res) => {
+  const settings = getSettings();
+  if (!settings.kommo_subdomain || !settings.kommo_token)
+    return res.status(400).json({ error: 'Not configured' });
+  try {
+    const r = await fetch(`https://${settings.kommo_subdomain}.kommo.com/api/v4/account`, {
+      headers: { 'Authorization': `Bearer ${settings.kommo_token}` }
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(400).json({ error: data.detail || 'Auth failed' });
+    res.json({ ok: true, account: data.name });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST push single company to Kommo
+app.post('/api/kommo/push/:id', async (req, res) => {
+  const companies = readDB(DB_PATH);
+  const company = companies.find(c => c.id === req.params.id);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+  const result = await pushToKommo(company);
+  if (result.ok) {
+    // Mark as pushed in DB
+    const idx = companies.findIndex(c => c.id === req.params.id);
+    companies[idx].kommo_lead_id = result.lead_id;
+    companies[idx].kommo_pushed_at = new Date().toISOString();
+    writeDB(DB_PATH, companies);
+  }
+  res.json(result);
+});
+
+// POST push ALL pending companies to Kommo
+app.post('/api/kommo/push-all', async (req, res) => {
+  const companies = readDB(DB_PATH);
+  const unpushed = companies.filter(c => !c.kommo_lead_id);
+  let pushed = 0, failed = 0;
+  for (const c of unpushed) {
+    const result = await pushToKommo(c);
+    if (result.ok) {
+      const idx = companies.findIndex(x => x.id === c.id);
+      companies[idx].kommo_lead_id = result.lead_id;
+      companies[idx].kommo_pushed_at = new Date().toISOString();
+      pushed++;
+    } else { failed++; }
+    // Small delay to avoid rate limits
+    await new Promise(r => setTimeout(r, 300));
+  }
+  writeDB(DB_PATH, companies);
+  res.json({ ok: true, pushed, failed, total: unpushed.length });
 });
 
 // Fallback: serve frontend for all other routes

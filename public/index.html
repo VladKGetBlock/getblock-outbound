@@ -150,6 +150,7 @@ tbody tr:hover td{background:var(--surface2);}
     <button class="tab active" onclick="switchTab('database')">🗄️ Database</button>
     <button class="tab" onclick="switchTab('upload')">⬆️ Import</button>
     <button class="tab" onclick="switchTab('clay')">🔗 Clay Setup</button>
+    <button class="tab" onclick="switchTab('kommo')">💼 Kommo CRM</button>
     <button class="tab" onclick="switchTab('responses')">🔔 Responses <span id="notif-badge" style="background:var(--accent3);color:#000;border-radius:10px;padding:1px 7px;font-size:10px;display:none;margin-left:2px"></span></button>
     <button class="tab" onclick="switchTab('deploy')">🚀 Deploy</button>
   </div>
@@ -348,6 +349,78 @@ Only run if: first_name is not empty.</div>
     </div>
   </div>
 
+  <!-- KOMMO CRM PANEL -->
+  <div class="panel" id="panel-kommo">
+    <div class="section-title">💼 Kommo CRM Integration</div>
+    <div class="section-sub">Connect your Kommo account — new companies are automatically created as leads with company cards.</div>
+
+    <!-- CONNECTION -->
+    <div class="prompt-builder" style="border-color:var(--accent2);margin-bottom:20px">
+      <div class="builder-title"><span style="background:var(--accent2)"></span> Kommo Connection
+        <span id="kommo-badge" style="font-size:11px;padding:3px 10px;border-radius:10px;margin-left:10px;background:rgba(90,106,138,.2);color:var(--muted);font-family:'Space Mono',monospace">NOT CONNECTED</span>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>YOUR KOMMO SUBDOMAIN</label>
+          <input type="text" id="kommo-subdomain" placeholder="yourcompany (from yourcompany.kommo.com)">
+        </div>
+        <div class="form-group">
+          <label>LONG-LIVED API TOKEN</label>
+          <input type="password" id="kommo-token" placeholder="eyJ0eXAiOiJKV1QiLCJhbGci...">
+        </div>
+      </div>
+
+      <div class="form-group" style="flex-direction:row;align-items:center;gap:12px;margin-bottom:0">
+        <label style="margin:0;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="kommo-autopush" checked style="width:16px;height:16px;accent-color:var(--accent)">
+          Auto-push every new company to Kommo as it arrives from Clay
+        </label>
+      </div>
+
+      <div class="btn-row" style="margin-top:16px">
+        <button class="btn btn-primary" onclick="saveKommo()">💾 Save & Connect</button>
+        <button class="btn btn-secondary" onclick="testKommo()">🧪 Test Connection</button>
+      </div>
+      <div id="kommo-status" style="margin-top:12px;font-size:13px;font-family:'Space Mono',monospace;display:none"></div>
+    </div>
+
+    <!-- HOW TO GET TOKEN -->
+    <div class="prompt-builder" style="margin-bottom:20px">
+      <div class="builder-title"><span></span> How to get your Kommo API Token</div>
+      <div style="font-size:13px;color:#aab4cc;line-height:1.9">
+        1. Go to <strong style="color:var(--text)">your-account.kommo.com</strong><br>
+        2. Click your avatar → <strong style="color:var(--text)">Settings → Integrations</strong><br>
+        3. Click <strong style="color:var(--text)">"Private integrations"</strong> → <strong style="color:var(--text)">Create integration</strong><br>
+        4. Give it a name (e.g. "GetBlock Outbound") → check all permissions → Save<br>
+        5. Click the integration → go to <strong style="color:var(--text)">"Keys and scopes"</strong> tab<br>
+        6. Copy the <strong style="color:var(--accent3)">Long-lived token</strong> → paste above
+      </div>
+    </div>
+
+    <!-- PUSH CONTROLS -->
+    <div class="prompt-builder" style="border-color:var(--accent3);margin-bottom:20px">
+      <div class="builder-title"><span style="background:var(--accent3)"></span> Push to Kommo</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        Manually push all companies not yet in Kommo, or use the button in the database table to push individual ones.
+      </div>
+      <div class="stats-row" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-val" id="k-total" style="font-size:24px">—</div><div class="stat-label">TOTAL COMPANIES</div></div>
+        <div class="stat-card"><div class="stat-val" id="k-pushed" style="font-size:24px;color:var(--success)">—</div><div class="stat-label">IN KOMMO</div></div>
+        <div class="stat-card"><div class="stat-val" id="k-pending" style="font-size:24px;color:var(--warn)">—</div><div class="stat-label">NOT PUSHED YET</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="pushAllToKommo()">🚀 Push All to Kommo</button>
+        <button class="btn btn-secondary" onclick="loadKommoStats()">↻ Refresh stats</button>
+      </div>
+      <div id="push-status" style="margin-top:12px;font-size:13px;font-family:'Space Mono',monospace;display:none"></div>
+    </div>
+
+    <div class="alert alert-info">
+      ℹ️ Each company is created in Kommo as a <strong>Lead</strong> with an attached <strong>Company card</strong> containing name, domain, employees, vertical tag, and description. Duplicate control is handled by Kommo automatically.
+    </div>
+  </div>
+
   <!-- RESPONSES PANEL -->
   <div class="panel" id="panel-responses">
     <div class="section-title">🔔 Reply Feed</div>
@@ -446,12 +519,13 @@ async function api(path, opts = {}) {
 
 // ── Tab switching ──────────────────────────────────────────
 function switchTab(name) {
-  const names = ['database','upload','clay','responses','deploy'];
+  const names = ['database','upload','clay','kommo','responses','deploy'];
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i] === name));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'database') loadCompanies();
   if (name === 'responses') loadResponses();
+  if (name === 'kommo') { loadKommoSettings(); loadKommoStats(); }
 }
 
 // ── Load stats ─────────────────────────────────────────────
@@ -538,7 +612,10 @@ function renderTable(companies) {
         </select>
       </td>
       <td style="font-size:11px;color:var(--muted)">${added}</td>
-      <td><button class="btn-danger" onclick="deleteCompany('${c.id}')">✕</button></td>
+      <td style="display:flex;gap:4px">
+        <button class="btn-danger" onclick="deleteCompany('${c.id}')">✕</button>
+        <button class="copy-btn" style="font-size:10px;padding:3px 8px;white-space:nowrap" onclick="pushOneToKommo('${c.id}', this)">${c.kommo_lead_id ? '✓ Kommo' : '→ Kommo'}</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -645,6 +722,111 @@ function updateWebhookUrls() {
   if (!url) return;
   document.getElementById('webhook-url-display').textContent = url + '/api/webhook/inbound';
   document.getElementById('reply-webhook-display').textContent = url + '/api/webhook/reply';
+}
+
+// ── Kommo CRM ──────────────────────────────────────────────
+async function loadKommoSettings() {
+  const data = await api('/api/kommo/settings');
+  if (!data) return;
+  if (data.subdomain) document.getElementById('kommo-subdomain').value = data.subdomain;
+  document.getElementById('kommo-autopush').checked = data.auto_push || false;
+  const badge = document.getElementById('kommo-badge');
+  if (data.configured) {
+    badge.textContent = '● CONNECTED';
+    badge.style.background = 'rgba(0,201,122,.15)';
+    badge.style.color = 'var(--success)';
+  }
+}
+
+async function loadKommoStats() {
+  const data = await api('/api/stats');
+  if (!data) return;
+  const companies = await api('/api/companies');
+  if (!companies) return;
+  const pushed = companies.companies.filter(c => c.kommo_lead_id).length;
+  const total = companies.companies.length;
+  document.getElementById('k-total').textContent = total;
+  document.getElementById('k-pushed').textContent = pushed;
+  document.getElementById('k-pending').textContent = total - pushed;
+}
+
+async function saveKommo() {
+  const subdomain = document.getElementById('kommo-subdomain').value.trim();
+  const token = document.getElementById('kommo-token').value.trim();
+  const auto_push = document.getElementById('kommo-autopush').checked;
+  if (!subdomain || !token) {
+    showKommoStatus('⚠ Please enter both subdomain and token', 'var(--warn)'); return;
+  }
+  const res = await api('/api/kommo/settings', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ subdomain, token, auto_push })
+  });
+  if (res?.ok) {
+    showKommoStatus('✓ Settings saved', 'var(--success)');
+    loadKommoSettings();
+  } else {
+    showKommoStatus('✗ Failed to save: ' + (res?.error || 'unknown'), 'var(--warn)');
+  }
+}
+
+async function testKommo() {
+  showKommoStatus('⟳ Testing connection...', 'var(--accent)');
+  const res = await api('/api/kommo/test', { method: 'POST' });
+  if (res?.ok) {
+    showKommoStatus(`✓ Connected! Kommo account: ${res.account}`, 'var(--success)');
+    const badge = document.getElementById('kommo-badge');
+    badge.textContent = '● CONNECTED';
+    badge.style.background = 'rgba(0,201,122,.15)';
+    badge.style.color = 'var(--success)';
+  } else {
+    showKommoStatus('✗ Connection failed: ' + (res?.error || 'Check subdomain and token'), 'var(--warn)');
+  }
+}
+
+async function pushAllToKommo() {
+  const btn = event.target;
+  btn.textContent = '⟳ Pushing...';
+  btn.disabled = true;
+  document.getElementById('push-status').style.display = 'block';
+  document.getElementById('push-status').textContent = 'Pushing companies to Kommo — please wait...';
+  document.getElementById('push-status').style.color = 'var(--accent)';
+
+  const res = await api('/api/kommo/push-all', { method: 'POST' });
+  btn.textContent = '🚀 Push All to Kommo';
+  btn.disabled = false;
+
+  if (res?.ok) {
+    document.getElementById('push-status').textContent = `✓ Done — ${res.pushed} pushed, ${res.failed} failed out of ${res.total} total.`;
+    document.getElementById('push-status').style.color = 'var(--success)';
+    loadKommoStats();
+  } else {
+    document.getElementById('push-status').textContent = '✗ Failed: ' + (res?.error || 'Check Kommo connection');
+    document.getElementById('push-status').style.color = 'var(--warn)';
+  }
+}
+
+async function pushOneToKommo(id, btn) {
+  btn.textContent = '⟳';
+  btn.disabled = true;
+  const res = await api(`/api/kommo/push/${id}`, { method: 'POST' });
+  if (res?.ok) {
+    btn.textContent = '✓ In Kommo';
+    btn.style.color = 'var(--success)';
+    btn.style.borderColor = 'var(--success)';
+  } else {
+    btn.textContent = '✗ Failed';
+    btn.style.color = 'var(--warn)';
+    btn.disabled = false;
+  }
+}
+
+function showKommoStatus(msg, color) {
+  const el = document.getElementById('kommo-status');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = msg;
 }
 
 // ── Init ───────────────────────────────────────────────────
