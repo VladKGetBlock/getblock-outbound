@@ -295,6 +295,17 @@ function saveSettings(data) {
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2));
 }
 
+// Fetch custom field IDs for companies from Kommo
+async function getKommoCompanyFields(subdomain, token) {
+  try {
+    const res = await fetch(`https://${subdomain}.kommo.com/api/v4/companies/custom_fields`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    return data?._embedded?.custom_fields || [];
+  } catch { return []; }
+}
+
 // Push a single company to Kommo as a lead + company card
 async function pushToKommo(company) {
   const settings = getSettings();
@@ -303,23 +314,48 @@ async function pushToKommo(company) {
     return { ok: false, error: 'Kommo not configured — add subdomain and token in the Kommo CRM tab' };
   }
 
-  const url = `https://${settings.kommo_subdomain}.kommo.com/api/v4/leads/complex`;
+  const { kommo_subdomain: subdomain, kommo_token: token } = settings;
 
-  // Build a clean note with all company details
-  const note = [
-    company.domain      ? `🌐 Website: ${company.domain}` : null,
-    company.vertical    ? `📂 Vertical: ${company.vertical}` : null,
-    company.employees   ? `👥 Employees: ${company.employees}` : null,
-    company.linkedin    ? `💼 LinkedIn: ${company.linkedin}` : null,
-    company.description ? `📝 About: ${company.description}` : null,
-    `🤖 Source: GetBlock Outbound App`,
+  // Fetch company custom fields to find text fields only (skip dropdowns/selects)
+  const fields = await getKommoCompanyFields(subdomain, token);
+  const textFields = fields.filter(f => f.type === 'text' || f.type === 'textarea' || f.type === 'url');
+  const fieldMap = {};
+  textFields.forEach(f => { fieldMap[f.name.toLowerCase()] = f.id; });
+  console.log('[Kommo] Available text fields:', Object.keys(fieldMap).join(', '));
+
+  // Build full summary for Use case / notes
+  const summary = [
+    company.domain      ? `Website: ${company.domain}`         : null,
+    company.vertical    ? `Vertical: ${company.vertical}`       : null,
+    company.employees   ? `Employees: ${company.employees}`     : null,
+    company.linkedin    ? `LinkedIn: ${company.linkedin}`       : null,
+    company.description ? `About: ${company.description}`       : null,
+    company.primary_chain ? `Chain: ${company.primary_chain}`   : null,
+    `Source: GetBlock Outbound App`,
   ].filter(Boolean).join('\n');
 
+  // Only fill text/textarea/url fields
+  const companyCustomFields = [];
+  const tryFill = (names, value) => {
+    if (!value) return;
+    for (const name of names) {
+      const id = fieldMap[name.toLowerCase()];
+      if (id) { companyCustomFields.push({ field_id: id, values: [{ value }] }); return; }
+    }
+  };
+
+  // Web field (url type) for domain
+  tryFill(['web', 'website', 'сайт', 'url'], company.domain);
+  // Use case for full summary
+  tryFill(['use case', 'usecase', 'use_case', 'юз кейс'], summary);
+
+  const url = `https://${subdomain}.kommo.com/api/v4/leads/complex`;
   const body = [{
     name: `${company.company} — GetBlock Outreach`,
     _embedded: {
       companies: [{
-        name: company.company
+        name: company.company,
+        ...(companyCustomFields.length ? { custom_fields_values: companyCustomFields } : {})
       }],
       tags: [
         { name: 'GetBlock Outbound' },
@@ -327,7 +363,18 @@ async function pushToKommo(company) {
       ].filter(Boolean),
       notes: [{
         note_type: 'common',
-        params: { text: note }
+        params: {
+          text: [
+            `🏢 ${company.company}`,
+            company.domain      ? `🌐 ${company.domain}`        : null,
+            company.vertical    ? `📂 ${company.vertical}`      : null,
+            company.employees   ? `👥 ${company.employees}`     : null,
+            company.linkedin    ? `💼 ${company.linkedin}`      : null,
+            company.description ? `📝 ${company.description}`   : null,
+            company.primary_chain ? `⛓ ${company.primary_chain}` : null,
+            `🤖 GetBlock Outbound App`,
+          ].filter(Boolean).join('\n')
+        }
       }]
     }
   }];
@@ -336,14 +383,11 @@ async function pushToKommo(company) {
     console.log(`[Kommo] Pushing: ${company.company} → ${url}`);
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${settings.kommo_token}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     const data = await res.json();
-    console.log(`[Kommo] Response ${res.status}:`, JSON.stringify(data).substring(0, 200));
+    console.log(`[Kommo] Response ${res.status}:`, JSON.stringify(data).substring(0, 300));
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}: ${JSON.stringify(data)}` };
     const leadId = data?._embedded?.leads?.[0]?.id;
     return { ok: true, lead_id: leadId };
