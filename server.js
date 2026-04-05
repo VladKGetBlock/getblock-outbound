@@ -14,16 +14,25 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Ensure data directory and files exist on startup ────────
-const DATA_DIR = path.join(__dirname, 'data');
+// Railway Volume should be mounted at /app/data
+// DATA_DIR can be overridden via env var for flexibility
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = path.join(DATA_DIR, 'companies.json');
 const CONTACTS_PATH = path.join(DATA_DIR, 'contacts.json');
 const RESPONSES_PATH = path.join(DATA_DIR, 'responses.json');
+const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 
-[DB_PATH, CONTACTS_PATH, RESPONSES_PATH].forEach(f => {
-  if (!fs.existsSync(f)) fs.writeFileSync(f, '[]');
-});
+// Initialize empty files only if they don't exist (preserves existing data)
+if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '[]');
+if (!fs.existsSync(CONTACTS_PATH)) fs.writeFileSync(CONTACTS_PATH, '[]');
+if (!fs.existsSync(RESPONSES_PATH)) fs.writeFileSync(RESPONSES_PATH, '[]');
+if (!fs.existsSync(SETTINGS_PATH)) fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ kommo_auto_push: true }));
+
+console.log(`[DB] Data directory: ${DATA_DIR}`);
+console.log(`[DB] Companies: ${fs.existsSync(DB_PATH) ? JSON.parse(fs.readFileSync(DB_PATH)).length + ' records' : 'new file'}`);
+console.log(`[DB] Settings: ${fs.existsSync(SETTINGS_PATH) ? 'loaded' : 'new file'}`);
 
 function readDB(filePath, fallback = []) {
   try {
@@ -265,12 +274,21 @@ app.delete('/api/companies/:id', (req, res) => {
 // KOMMO CRM INTEGRATION
 // ══════════════════════════════════════════════════════════════
 
-const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
-if (!fs.existsSync(SETTINGS_PATH)) fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ kommo_auto_push: true }));
-
 function getSettings() {
-  try { return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); }
-  catch { return {}; }
+  try {
+    const file = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+    // Support both naming conventions for Railway Variables
+    const subdomain = process.env.KOMMO_SUBDOMAIN || process.env.Kommo || file.kommo_subdomain || '';
+    const token     = process.env.KOMMO_TOKEN     || process.env['Kommo 2'] || file.kommo_token || '';
+    const autoPush  = process.env.KOMMO_AUTO_PUSH === 'true' || file.kommo_auto_push || false;
+    return { ...file, kommo_subdomain: subdomain, kommo_token: token, kommo_auto_push: autoPush };
+  } catch {
+    return {
+      kommo_subdomain: process.env.KOMMO_SUBDOMAIN || process.env.Kommo || '',
+      kommo_token:     process.env.KOMMO_TOKEN     || process.env['Kommo 2'] || '',
+      kommo_auto_push: true,
+    };
+  }
 }
 function saveSettings(data) {
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2));
@@ -285,21 +303,32 @@ async function pushToKommo(company) {
   }
 
   const url = `https://${settings.kommo_subdomain}.kommo.com/api/v4/leads/complex`;
+
+  // Build a clean note with all company details
+  const note = [
+    company.domain      ? `🌐 Website: ${company.domain}` : null,
+    company.vertical    ? `📂 Vertical: ${company.vertical}` : null,
+    company.employees   ? `👥 Employees: ${company.employees}` : null,
+    company.linkedin    ? `💼 LinkedIn: ${company.linkedin}` : null,
+    company.description ? `📝 About: ${company.description}` : null,
+    `🤖 Source: GetBlock Outbound App`,
+  ].filter(Boolean).join('\n');
+
   const body = [{
     name: `${company.company} — GetBlock Outreach`,
     _embedded: {
       companies: [{
-        name: company.company,
-        custom_fields_values: [
-          company.domain    ? { field_code: 'WEB',  values: [{ value: company.domain }] }    : null,
-          company.employees ? { field_code: 'EMPLOYEES', values: [{ value: company.employees }] } : null,
-        ].filter(Boolean)
+        name: company.company
       }],
-      tags: [{ name: company.vertical || 'Web3' }, { name: 'GetBlock Outbound' }]
-    },
-    custom_fields_values: [
-      company.description ? { field_code: 'DESCRIPTION', values: [{ value: company.description }] } : null,
-    ].filter(Boolean)
+      tags: [
+        { name: 'GetBlock Outbound' },
+        company.vertical ? { name: company.vertical } : null
+      ].filter(Boolean),
+      notes: [{
+        note_type: 'common',
+        params: { text: note }
+      }]
+    }
   }];
 
   try {
@@ -329,7 +358,8 @@ app.get('/api/kommo/settings', (req, res) => {
   res.json({
     subdomain: s.kommo_subdomain || '',
     configured: !!(s.kommo_subdomain && s.kommo_token),
-    auto_push: s.kommo_auto_push || false
+    auto_push: s.kommo_auto_push || false,
+    source: (process.env.KOMMO_SUBDOMAIN && process.env.KOMMO_TOKEN) ? 'env' : 'file'
   });
 });
 

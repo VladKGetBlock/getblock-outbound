@@ -732,7 +732,7 @@ async function loadKommoSettings() {
   document.getElementById('kommo-autopush').checked = data.auto_push || false;
   const badge = document.getElementById('kommo-badge');
   if (data.configured) {
-    badge.textContent = '● CONNECTED';
+    badge.textContent = data.source === 'env' ? '● CONNECTED via Railway Variables' : '● CONNECTED';
     badge.style.background = 'rgba(0,201,122,.15)';
     badge.style.color = 'var(--success)';
   }
