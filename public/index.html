@@ -797,8 +797,8 @@ async function pushAllToKommo() {
   btn.disabled = false;
 
   if (res?.ok) {
-    document.getElementById('push-status').textContent = `✓ Done — ${res.pushed} pushed, ${res.failed} failed out of ${res.total} total.`;
-    document.getElementById('push-status').style.color = 'var(--success)';
+    document.getElementById('push-status').textContent = `✓ Done — ${res.pushed} pushed, ${res.failed} failed out of ${res.total} total.${res.first_error ? ' Error: ' + res.first_error : ''}`;
+    document.getElementById('push-status').style.color = res.failed > 0 ? 'var(--warn)' : 'var(--success)';
     loadKommoStats();
   } else {
     document.getElementById('push-status').textContent = '✗ Failed: ' + (res?.error || 'Check Kommo connection');

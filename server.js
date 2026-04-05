@@ -279,7 +279,10 @@ function saveSettings(data) {
 // Push a single company to Kommo as a lead + company card
 async function pushToKommo(company) {
   const settings = getSettings();
-  if (!settings.kommo_subdomain || !settings.kommo_token) return { ok: false, error: 'Kommo not configured' };
+  if (!settings.kommo_subdomain || !settings.kommo_token) {
+    console.log('[Kommo] Not configured — subdomain or token missing');
+    return { ok: false, error: 'Kommo not configured — add subdomain and token in the Kommo CRM tab' };
+  }
 
   const url = `https://${settings.kommo_subdomain}.kommo.com/api/v4/leads/complex`;
   const body = [{
@@ -300,6 +303,7 @@ async function pushToKommo(company) {
   }];
 
   try {
+    console.log(`[Kommo] Pushing: ${company.company} → ${url}`);
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -309,10 +313,12 @@ async function pushToKommo(company) {
       body: JSON.stringify(body)
     });
     const data = await res.json();
-    if (!res.ok) return { ok: false, error: JSON.stringify(data) };
+    console.log(`[Kommo] Response ${res.status}:`, JSON.stringify(data).substring(0, 200));
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}: ${JSON.stringify(data)}` };
     const leadId = data?._embedded?.leads?.[0]?.id;
     return { ok: true, lead_id: leadId };
   } catch (err) {
+    console.error('[Kommo] Fetch error:', err.message);
     return { ok: false, error: err.message };
   }
 }
@@ -376,7 +382,7 @@ app.post('/api/kommo/push/:id', async (req, res) => {
 app.post('/api/kommo/push-all', async (req, res) => {
   const companies = readDB(DB_PATH);
   const unpushed = companies.filter(c => !c.kommo_lead_id);
-  let pushed = 0, failed = 0;
+  let pushed = 0, failed = 0, firstError = null;
   for (const c of unpushed) {
     const result = await pushToKommo(c);
     if (result.ok) {
@@ -384,12 +390,14 @@ app.post('/api/kommo/push-all', async (req, res) => {
       companies[idx].kommo_lead_id = result.lead_id;
       companies[idx].kommo_pushed_at = new Date().toISOString();
       pushed++;
-    } else { failed++; }
-    // Small delay to avoid rate limits
+    } else {
+      failed++;
+      if (!firstError) firstError = result.error;
+    }
     await new Promise(r => setTimeout(r, 300));
   }
   writeDB(DB_PATH, companies);
-  res.json({ ok: true, pushed, failed, total: unpushed.length });
+  res.json({ ok: true, pushed, failed, total: unpushed.length, first_error: firstError });
 });
 
 // Fallback: serve frontend for all other routes
