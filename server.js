@@ -277,15 +277,16 @@ app.delete('/api/companies/:id', (req, res) => {
 function getSettings() {
   try {
     const file = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
-    // Support both naming conventions for Railway Variables
-    const subdomain = process.env.KOMMO_SUBDOMAIN || process.env.Kommo || file.kommo_subdomain || '';
-    const token     = process.env.KOMMO_TOKEN     || process.env['Kommo 2'] || file.kommo_token || '';
+    const rawSubdomain = process.env.KOMMO_SUBDOMAIN || process.env.Kommo || file.kommo_subdomain || '';
+    const subdomain = rawSubdomain.replace(/\.kommo\.com.*$/, '').trim();
+    const token     = process.env.KOMMO_TOKEN || process.env['Kommo 2'] || file.kommo_token || '';
     const autoPush  = process.env.KOMMO_AUTO_PUSH === 'true' || file.kommo_auto_push || false;
     return { ...file, kommo_subdomain: subdomain, kommo_token: token, kommo_auto_push: autoPush };
   } catch {
+    const rawSubdomain = process.env.KOMMO_SUBDOMAIN || process.env.Kommo || '';
     return {
-      kommo_subdomain: process.env.KOMMO_SUBDOMAIN || process.env.Kommo || '',
-      kommo_token:     process.env.KOMMO_TOKEN     || process.env['Kommo 2'] || '',
+      kommo_subdomain: rawSubdomain.replace(/\.kommo\.com.*$/, '').trim(),
+      kommo_token:     process.env.KOMMO_TOKEN || process.env['Kommo 2'] || '',
       kommo_auto_push: true,
     };
   }
