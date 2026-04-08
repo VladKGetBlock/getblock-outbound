@@ -797,7 +797,7 @@ async function pushAllToKommo() {
   btn.disabled = false;
 
   if (res?.ok) {
-    document.getElementById('push-status').textContent = `✓ Done — ${res.pushed} pushed, ${res.failed} failed out of ${res.total} total.${res.first_error ? ' Error: ' + res.first_error : ''}`;
+    document.getElementById('push-status').textContent = `✓ Done — ${res.pushed} pushed, ${res.skipped || 0} already in Kommo (skipped), ${res.failed} failed.${res.first_error ? ' Error: ' + res.first_error : ''}`;
     document.getElementById('push-status').style.color = res.failed > 0 ? 'var(--warn)' : 'var(--success)';
     loadKommoStats();
   } else {

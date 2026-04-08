@@ -30,6 +30,25 @@ if (!fs.existsSync(CONTACTS_PATH)) fs.writeFileSync(CONTACTS_PATH, '[]');
 if (!fs.existsSync(RESPONSES_PATH)) fs.writeFileSync(RESPONSES_PATH, '[]');
 if (!fs.existsSync(SETTINGS_PATH)) fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ kommo_auto_push: true }));
 
+// Persistent file tracking which company names were already pushed to Kommo
+// This survives deploys as long as Railway Volume is mounted at /app/data
+const PUSHED_PATH = path.join(DATA_DIR, 'kommo_pushed.json');
+if (!fs.existsSync(PUSHED_PATH)) fs.writeFileSync(PUSHED_PATH, '{}');
+
+function getPushedIds() {
+  try { return JSON.parse(fs.readFileSync(PUSHED_PATH, 'utf8')); }
+  catch { return {}; }
+}
+function markPushed(companyName, leadId) {
+  const pushed = getPushedIds();
+  pushed[companyName.toLowerCase().trim()] = { lead_id: leadId, pushed_at: new Date().toISOString() };
+  fs.writeFileSync(PUSHED_PATH, JSON.stringify(pushed, null, 2));
+}
+function wasAlreadyPushed(companyName) {
+  const pushed = getPushedIds();
+  return !!pushed[companyName?.toLowerCase().trim()];
+}
+
 console.log(`[DB] Data directory: ${DATA_DIR}`);
 console.log(`[DB] Companies: ${fs.existsSync(DB_PATH) ? JSON.parse(fs.readFileSync(DB_PATH)).length + ' records' : 'new file'}`);
 console.log(`[DB] Settings: ${fs.existsSync(SETTINGS_PATH) ? 'loaded' : 'new file'}`);
@@ -403,6 +422,8 @@ async function pushToKommo(company) {
     console.log(`[Kommo] Response ${res.status}:`, JSON.stringify(data).substring(0, 300));
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}: ${JSON.stringify(data)}` };
     const leadId = data?._embedded?.leads?.[0]?.id;
+    // Persist to kommo_pushed.json so it survives deploys
+    if (leadId) markPushed(company.company, leadId);
     return { ok: true, lead_id: leadId };
   } catch (err) {
     console.error('[Kommo] Fetch error:', err.message);
@@ -455,9 +476,12 @@ app.post('/api/kommo/push/:id', async (req, res) => {
   const companies = readDB(DB_PATH);
   const company = companies.find(c => c.id === req.params.id);
   if (!company) return res.status(404).json({ error: 'Company not found' });
+  // Skip if already pushed (check persistent file)
+  if (wasAlreadyPushed(company.company)) {
+    return res.json({ ok: true, skipped: true, message: 'Already in Kommo' });
+  }
   const result = await pushToKommo(company);
   if (result.ok) {
-    // Mark as pushed in DB
     const idx = companies.findIndex(c => c.id === req.params.id);
     companies[idx].kommo_lead_id = result.lead_id;
     companies[idx].kommo_pushed_at = new Date().toISOString();
@@ -469,8 +493,12 @@ app.post('/api/kommo/push/:id', async (req, res) => {
 // POST push ALL pending companies to Kommo
 app.post('/api/kommo/push-all', async (req, res) => {
   const companies = readDB(DB_PATH);
-  const unpushed = companies.filter(c => !c.kommo_lead_id);
-  let pushed = 0, failed = 0, firstError = null;
+  // Check BOTH the in-memory flag AND the persistent file
+  const unpushed = companies.filter(c => !c.kommo_lead_id && !wasAlreadyPushed(c.company));
+  let pushed = 0, failed = 0, skipped = 0, firstError = null;
+
+  console.log(`[Kommo] Push-all: ${unpushed.length} to push, ${companies.length - unpushed.length} already in Kommo`);
+
   for (const c of unpushed) {
     const result = await pushToKommo(c);
     if (result.ok) {
@@ -485,7 +513,7 @@ app.post('/api/kommo/push-all', async (req, res) => {
     await new Promise(r => setTimeout(r, 300));
   }
   writeDB(DB_PATH, companies);
-  res.json({ ok: true, pushed, failed, total: unpushed.length, first_error: firstError });
+  res.json({ ok: true, pushed, failed, skipped: companies.length - unpushed.length, total: companies.length, first_error: firstError });
 });
 
 // Fallback: serve frontend for all other routes
