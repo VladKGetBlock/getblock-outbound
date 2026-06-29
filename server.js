@@ -516,6 +516,212 @@ app.post('/api/kommo/push-all', async (req, res) => {
   res.json({ ok: true, pushed, failed, skipped: companies.length - unpushed.length, total: companies.length, first_error: firstError });
 });
 
+// ══════════════════════════════════════════════════════════════
+// DEDICATED UNPAID — SLACK SCAN + EMAIL SENDING
+// Cloud agents read Slack via MCP and POST raw message data.
+// This server sends emails via SMTP and tracks everything.
+// ══════════════════════════════════════════════════════════════
+
+const nodemailer = require('nodemailer');
+
+const EMAIL_LOG_PATH = path.join(DATA_DIR, 'email_log.json');
+
+if (!fs.existsSync(EMAIL_LOG_PATH)) fs.writeFileSync(EMAIL_LOG_PATH, '[]');
+
+function parseOrderDetails(text) {
+  const d = {};
+  const patterns = {
+    protocol:        /(?:protocol|blockchain|symbol)[:\s]+([A-Z]{2,10})/i,
+    network:         /network[:\s]+(\w+)/i,
+    mode:            /mode[:\s]+(\w+)/i,
+    region:          /region[:\s]+([A-Z]{2,5})/i,
+    subscription_id: /(?:subscription[_ ]id|sub_id|order[_ ]id)[:\s]+([a-zA-Z0-9_-]+)/i,
+    amount:          /(\$[\d,]+(?:\.\d+)?\/month)/i,
+  };
+  for (const [key, re] of Object.entries(patterns)) {
+    const m = text.match(re);
+    if (m) d[key] = m[1] || m[0];
+  }
+  return d;
+}
+
+async function sendEmail(to, details) {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  const fromName  = process.env.FROM_NAME || 'GetBlock.io';
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: gmailUser, pass: gmailPass },
+  });
+
+  const lines = [];
+  if (details.protocol)        lines.push(`  • Protocol: ${details.protocol.toUpperCase()}`);
+  if (details.network)         lines.push(`  • Network:  ${details.network}`);
+  if (details.mode)            lines.push(`  • Mode:     ${details.mode}`);
+  if (details.region)          lines.push(`  • Region:   ${details.region}`);
+  if (details.amount)          lines.push(`  • Price:    ${details.amount}`);
+  if (details.subscription_id) lines.push(`  • Order ID: ${details.subscription_id}`);
+
+  const detailBlock = lines.length ? `\nYour order details:\n${lines.join('\n')}\n` : '';
+  const protocol    = details.protocol ? details.protocol.toUpperCase() : 'GetBlock';
+  const subject     = `Your ${protocol} Dedicated Node – Payment Still Pending`;
+
+  const text =
+`Hi there,
+
+We noticed your GetBlock dedicated node order is still waiting for payment — you're one step away from having your node up and running.
+${detailBlock}
+To complete your order, please return to your GetBlock dashboard:
+https://account.getblock.io
+
+If you ran into any issues with the payment process or have questions about your configuration, just reply to this email.
+
+Best regards,
+${fromName}
+support@getblock.io`;
+
+  await transporter.sendMail({
+    from:    `"${fromName}" <${gmailUser}>`,
+    to,
+    subject,
+    text,
+  });
+
+  return subject;
+}
+
+// GET /api/email-log — full log, most recent first
+app.get('/api/email-log', (req, res) => {
+  const log = readDB(EMAIL_LOG_PATH);
+  res.json([...log].reverse());
+});
+
+// GET /api/email-log/stats
+app.get('/api/email-log/stats', (req, res) => {
+  const log   = readDB(EMAIL_LOG_PATH);
+  const sent  = log.filter(e => e.log_type === 'email_sent');
+  const scans = log.filter(e => e.log_type === 'scan');
+  const today = new Date().toISOString().split('T')[0];
+
+  const byDate = {};
+  sent.forEach(e => {
+    const d = e.date.split('T')[0];
+    byDate[d] = (byDate[d] || 0) + 1;
+  });
+
+  const lastScan = scans.length ? scans[scans.length - 1] : null;
+
+  res.json({
+    total_emails_sent: sent.length,
+    total_scans:       scans.length,
+    total_failed:      log.filter(e => e.log_type === 'email_failed').length,
+    emails_today:      sent.filter(e => e.date.startsWith(today)).length,
+    last_scan:         lastScan ? lastScan.date : null,
+    last_scan_stats:   lastScan,
+    by_date:           byDate,
+  });
+});
+
+// POST /api/dedicated-unpaid/run
+// Cloud agents POST: { messages: [{ slack_ts, text, customer_email? }] }
+// Server deduplicates, sends emails, logs everything.
+app.post('/api/dedicated-unpaid/run', async (req, res) => {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+  if (!gmailUser || !gmailPass) {
+    return res.status(500).json({ ok: false, error: 'GMAIL_USER and GMAIL_APP_PASSWORD not set in Railway Variables' });
+  }
+
+  try {
+    const { messages = [] } = req.body || {};
+    const emailLog    = readDB(EMAIL_LOG_PATH);
+    const processedTs = new Set(emailLog.filter(e => e.slack_ts).map(e => e.slack_ts));
+    const SEVEN_DAYS  = 7 * 24 * 60 * 60 * 1000;
+    const runId       = `run_${Date.now()}`;
+
+    let emailsSent = 0, skipped = 0;
+    const errors = [];
+
+    for (const msg of messages) {
+      // Skip already-processed Slack messages
+      if (msg.slack_ts && processedTs.has(msg.slack_ts)) { skipped++; continue; }
+
+      const emailMatch = (msg.customer_email || '').match(/[\w.+\-]+@[\w.\-]+\.[a-zA-Z]{2,}/)
+                      || (msg.text || '').match(/[\w.+\-]+@[\w.\-]+\.[a-zA-Z]{2,}/);
+
+      if (!emailMatch) {
+        emailLog.push({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2,6)}`,
+          run_id: runId, log_type: 'skipped_no_email',
+          slack_ts: msg.slack_ts, date: new Date().toISOString(),
+          message_preview: (msg.text || '').substring(0, 120),
+        });
+        continue;
+      }
+
+      const customerEmail = emailMatch[0];
+
+      // Skip if emailed within 7 days
+      const recentEntry = emailLog.find(e =>
+        e.customer_email === customerEmail &&
+        e.log_type === 'email_sent' &&
+        Date.now() - new Date(e.date).getTime() < SEVEN_DAYS
+      );
+      if (recentEntry) {
+        skipped++;
+        emailLog.push({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2,6)}`,
+          run_id: runId, log_type: 'skipped_already_emailed',
+          slack_ts: msg.slack_ts, customer_email: customerEmail,
+          date: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      const details = parseOrderDetails(msg.text || '');
+
+      try {
+        const subject = await sendEmail(customerEmail, details);
+        emailsSent++;
+        emailLog.push({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2,6)}`,
+          run_id: runId, log_type: 'email_sent',
+          slack_ts: msg.slack_ts, customer_email: customerEmail,
+          subject, order_details: details, date: new Date().toISOString(),
+        });
+        console.log(`[DedicatedUnpaid] Sent → ${customerEmail}`);
+      } catch (err) {
+        errors.push(`${customerEmail}: ${err.message}`);
+        emailLog.push({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2,6)}`,
+          run_id: runId, log_type: 'email_failed',
+          slack_ts: msg.slack_ts, customer_email: customerEmail,
+          date: new Date().toISOString(), error: err.message,
+        });
+        console.error(`[DedicatedUnpaid] Failed → ${customerEmail}:`, err.message);
+      }
+    }
+
+    emailLog.push({
+      id: `scan_${Date.now()}`,
+      run_id: runId, log_type: 'scan', date: new Date().toISOString(),
+      messages_found: messages.length,
+      messages_processed: messages.length - skipped,
+      emails_sent: emailsSent,
+      skipped,
+      errors: errors.length,
+    });
+
+    writeDB(EMAIL_LOG_PATH, emailLog);
+    res.json({ ok: true, runId, messagesFound: messages.length, emailsSent, skipped, errors });
+  } catch (err) {
+    console.error('[DedicatedUnpaid]', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Fallback: serve frontend for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

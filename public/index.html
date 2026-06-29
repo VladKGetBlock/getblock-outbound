@@ -153,6 +153,7 @@ tbody tr:hover td{background:var(--surface2);}
     <button class="tab" onclick="switchTab('kommo')">💼 Kommo CRM</button>
     <button class="tab" onclick="switchTab('responses')">🔔 Responses <span id="notif-badge" style="background:var(--accent3);color:#000;border-radius:10px;padding:1px 7px;font-size:10px;display:none;margin-left:2px"></span></button>
     <button class="tab" onclick="switchTab('deploy')">🚀 Deploy</button>
+    <button class="tab" onclick="switchTab('dedicated')">📧 Dedicated <span id="dedic-badge" style="background:var(--accent3);color:#000;border-radius:10px;padding:1px 7px;font-size:10px;display:none;margin-left:2px"></span></button>
   </div>
 
   <!-- DATABASE PANEL -->
@@ -503,6 +504,98 @@ Only run if: first_name is not empty.</div>
     </div>
   </div>
 
+  <!-- DEDICATED UNPAID PANEL -->
+  <div class="panel" id="panel-dedicated">
+    <div class="section-title">📧 Dedicated Unpaid — Email Agent</div>
+    <div class="section-sub">Reads <code style="color:var(--accent);background:rgba(0,212,255,.08);padding:1px 6px;border-radius:4px">#dedicated-unpaid</code> Slack channel, sends follow-up emails, records every action with timestamps.</div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="dedic-stats-row">
+      <div class="stat-card"><div class="stat-val" id="ds-sent">—</div><div class="stat-label">TOTAL SENT</div></div>
+      <div class="stat-card"><div class="stat-val" id="ds-today">—</div><div class="stat-label">SENT TODAY</div></div>
+      <div class="stat-card"><div class="stat-val" id="ds-scans">—</div><div class="stat-label">TOTAL RUNS</div></div>
+      <div class="stat-card"><div class="stat-val" id="ds-failed" style="color:var(--warn)">—</div><div class="stat-label">FAILED</div></div>
+      <div class="stat-card"><div class="stat-val" id="ds-last" style="font-size:13px;margin-top:6px">—</div><div class="stat-label">LAST RUN</div></div>
+    </div>
+
+    <!-- Run controls -->
+    <div class="prompt-builder" style="border-color:var(--accent3);margin-bottom:20px">
+      <div class="builder-title"><span style="background:var(--accent3)"></span> Agent Controls</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        Scheduled runs: <strong style="color:var(--text)">8:00 AM · 6:00 PM · 11:00 PM</strong> (Buenos Aires time). Or trigger manually below.
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="runDedicatedAgent()">▶ Run Now</button>
+        <button class="btn btn-secondary" onclick="loadDedicatedStats()">↻ Refresh Stats</button>
+      </div>
+      <div id="dedic-run-status" style="margin-top:12px;font-size:13px;font-family:'Space Mono',monospace;display:none"></div>
+    </div>
+
+    <!-- Setup guide -->
+    <div class="prompt-builder" style="margin-bottom:20px">
+      <div class="builder-title"><span></span> Required Environment Variables</div>
+      <div style="font-family:'Space Mono',monospace;font-size:11px;line-height:2.1;color:#aad4ff">
+        <span style="color:var(--muted)"># Add to Railway Variables (Settings → Variables):</span><br>
+        <span style="color:var(--accent3)">SLACK_BOT_TOKEN</span>=xoxb-your-bot-token<br>
+        <span style="color:var(--accent3)">DEDICATED_UNPAID_CHANNEL_ID</span>=C0XXXXXXXXXX<br>
+        <span style="color:var(--accent3)">GMAIL_USER</span>=you@gmail.com<br>
+        <span style="color:var(--accent3)">GMAIL_APP_PASSWORD</span>=xxxx-xxxx-xxxx-xxxx<br>
+        <span style="color:var(--accent3)">FROM_NAME</span>=GetBlock.io
+      </div>
+      <div style="margin-top:14px;font-size:13px;color:var(--muted);line-height:1.8">
+        <strong style="color:var(--text)">Gmail App Password:</strong> Google Account → Security → 2-Step Verification (enable) → App passwords → create one for "Mail / Other (GetBlock)" → copy the 16-char code.<br>
+        <strong style="color:var(--text)">Slack Bot Token:</strong> api.slack.com/apps → create app → OAuth & Permissions → add <code style="color:var(--accent)">channels:history</code> + <code style="color:var(--accent)">channels:read</code> scopes → install to workspace → copy Bot User OAuth Token.
+      </div>
+    </div>
+
+    <!-- Email log table -->
+    <div class="db-table-wrap">
+      <div class="db-table-header">
+        <div class="db-table-title">📋 Email Log</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <select class="db-filter" id="dedic-filter" onchange="renderEmailLog()">
+            <option value="">All entries</option>
+            <option value="email_sent">Sent</option>
+            <option value="email_failed">Failed</option>
+            <option value="scan">Scans</option>
+            <option value="skipped_already_emailed">Skipped (dup)</option>
+            <option value="skipped_no_email">Skipped (no email)</option>
+          </select>
+          <button class="btn btn-secondary" style="font-size:12px;padding:8px 14px" onclick="loadEmailLog()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>DATE (BA)</th>
+              <th>TYPE</th>
+              <th>CUSTOMER EMAIL</th>
+              <th>SUBJECT / DETAILS</th>
+              <th>RUN ID</th>
+            </tr>
+          </thead>
+          <tbody id="email-log-tbody">
+            <tr><td colspan="5"><div class="empty-state"><div>📭</div>No log entries yet. Run the agent to start.</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Per-day breakdown -->
+    <div class="db-table-wrap" style="margin-top:20px">
+      <div class="db-table-header">
+        <div class="db-table-title">📅 Emails Sent — By Date</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>DATE</th><th>EMAILS SENT</th></tr></thead>
+          <tbody id="dedic-by-date"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div><!-- end .app -->
 
 <script>
@@ -519,13 +612,14 @@ async function api(path, opts = {}) {
 
 // ── Tab switching ──────────────────────────────────────────
 function switchTab(name) {
-  const names = ['database','upload','clay','kommo','responses','deploy'];
+  const names = ['database','upload','clay','kommo','responses','deploy','dedicated'];
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i] === name));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
-  if (name === 'database') loadCompanies();
+  if (name === 'database')  loadCompanies();
   if (name === 'responses') loadResponses();
-  if (name === 'kommo') { loadKommoSettings(); loadKommoStats(); }
+  if (name === 'kommo')     { loadKommoSettings(); loadKommoStats(); }
+  if (name === 'dedicated') { loadDedicatedStats(); loadEmailLog(); }
 }
 
 // ── Load stats ─────────────────────────────────────────────
@@ -829,9 +923,120 @@ function showKommoStatus(msg, color) {
   el.textContent = msg;
 }
 
+// ── Dedicated Unpaid ───────────────────────────────────────
+let allEmailLog = [];
+
+async function loadDedicatedStats() {
+  const data = await api('/api/email-log/stats');
+  if (!data) return;
+  document.getElementById('ds-sent').textContent   = data.total_emails_sent ?? '—';
+  document.getElementById('ds-today').textContent  = data.emails_today ?? '—';
+  document.getElementById('ds-scans').textContent  = data.total_scans ?? '—';
+  document.getElementById('ds-failed').textContent = data.total_failed ?? '—';
+  if (data.last_scan) {
+    const d = new Date(data.last_scan);
+    // Convert UTC → Buenos Aires (UTC-3)
+    const ba = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+    document.getElementById('ds-last').textContent =
+      ba.toLocaleDateString('es-AR') + ' ' + ba.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+  }
+  const badge = document.getElementById('dedic-badge');
+  if ((data.total_emails_sent || 0) > 0) {
+    badge.textContent = data.total_emails_sent;
+    badge.style.display = 'inline';
+  }
+
+  // By-date table
+  const tbody = document.getElementById('dedic-by-date');
+  if (data.by_date && Object.keys(data.by_date).length > 0) {
+    const sorted = Object.entries(data.by_date).sort((a, b) => b[0].localeCompare(a[0]));
+    tbody.innerHTML = sorted.map(([date, count]) =>
+      `<tr><td style="font-family:'Space Mono',monospace;font-size:12px">${date}</td>
+           <td><strong style="color:var(--success)">${count}</strong></td></tr>`
+    ).join('');
+  } else {
+    tbody.innerHTML = `<tr><td colspan="2"><div class="empty-state" style="padding:20px">No emails sent yet</div></td></tr>`;
+  }
+}
+
+async function loadEmailLog() {
+  const data = await api('/api/email-log');
+  if (!data) return;
+  allEmailLog = data;
+  renderEmailLog();
+}
+
+function renderEmailLog() {
+  const filter = document.getElementById('dedic-filter').value;
+  const rows = filter ? allEmailLog.filter(e => e.log_type === filter) : allEmailLog;
+  const tbody = document.getElementById('email-log-tbody');
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div>📭</div>No entries${filter ? ' for this filter' : ' yet'}.</div></td></tr>`;
+    return;
+  }
+
+  const typeLabel = {
+    email_sent:              `<span class="status-badge status-sent">✓ sent</span>`,
+    email_failed:            `<span class="status-badge" style="background:rgba(255,107,53,.12);color:var(--warn);border:1px solid rgba(255,107,53,.3)">✗ failed</span>`,
+    scan:                    `<span class="status-badge status-pending">⟳ scan</span>`,
+    skipped_already_emailed: `<span class="status-badge status-pending">⤼ dup skip</span>`,
+    skipped_no_email:        `<span class="status-badge status-pending">⤼ no email</span>`,
+  };
+
+  tbody.innerHTML = rows.slice(0, 200).map(e => {
+    // Convert UTC date → Buenos Aires (UTC-3)
+    const utc = new Date(e.date);
+    const ba  = new Date(utc.getTime() - 3 * 60 * 60 * 1000);
+    const dateStr = ba.toLocaleDateString('es-AR') + ' ' + ba.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+
+    const label = typeLabel[e.log_type] || `<span class="status-badge status-pending">${e.log_type}</span>`;
+
+    let detail = '';
+    if (e.log_type === 'email_sent') {
+      detail = `<span style="font-size:11px;color:var(--muted)">${e.subject || ''}</span>`;
+      if (e.order_details?.protocol) detail += `<br><span class="tag-badge">${e.order_details.protocol.toUpperCase()}</span>`;
+    } else if (e.log_type === 'scan') {
+      detail = `<span style="font-size:11px;color:var(--muted)">found ${e.messages_found} · processed ${e.messages_processed} · sent ${e.emails_sent} · skipped ${e.skipped}${e.errors > 0 ? ` · <span style="color:var(--warn)">${e.errors} err</span>` : ''}</span>`;
+    } else if (e.log_type === 'email_failed') {
+      detail = `<span style="font-size:11px;color:var(--warn)">${(e.error||'').substring(0,80)}</span>`;
+    } else if (e.log_type === 'skipped_no_email') {
+      detail = `<span style="font-size:11px;color:var(--muted)">${(e.message_preview||'').substring(0,80)}</span>`;
+    }
+
+    return `<tr>
+      <td style="font-family:'Space Mono',monospace;font-size:11px;white-space:nowrap">${dateStr}</td>
+      <td>${label}</td>
+      <td style="font-size:12px;color:var(--accent)">${e.customer_email || '—'}</td>
+      <td style="max-width:260px">${detail}</td>
+      <td style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)">${(e.run_id||'').replace('run_','')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function runDedicatedAgent() {
+  const status = document.getElementById('dedic-run-status');
+  status.style.display = 'block';
+  status.style.color = 'var(--accent)';
+  status.textContent = '⟳ Running agent — reading Slack and sending emails...';
+
+  const res = await api('/api/dedicated-unpaid/run', { method: 'POST' });
+
+  if (res?.ok) {
+    status.style.color = 'var(--success)';
+    status.textContent = `✓ Done — found ${res.messagesFound} messages, processed ${res.messagesProcessed}, sent ${res.emailsSent}, skipped ${res.skipped}${res.errors?.length ? `, ${res.errors.length} errors` : ''}.`;
+    loadDedicatedStats();
+    loadEmailLog();
+  } else {
+    status.style.color = 'var(--warn)';
+    status.textContent = `✗ Failed: ${res?.error || 'Check Railway logs for details'}`;
+  }
+}
+
 // ── Init ───────────────────────────────────────────────────
 loadStats();
 loadCompanies();
+loadDedicatedStats();
 setInterval(loadStats, 30000);
 </script>
 </body>
